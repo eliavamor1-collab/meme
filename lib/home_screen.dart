@@ -56,9 +56,16 @@ class _HomeScreenState extends State<HomeScreen> {
     }
     if (mounted) setState(() => _playingId = sound.id);
     try {
-      final cached = AudioCacheManager().getLocalPath(sound.filePath);
-      final path = cached ?? sound.filePath;
-      await _player.play(DeviceFileSource(path));
+      if (sound.isBuiltIn) {
+        // ב-Web משתמשים ב-AssetSource ישירות
+        await _player.play(
+          AssetSource(sound.filePath.replaceFirst('assets/', '')),
+        );
+      } else {
+        final cached = AudioCacheManager().getLocalPath(sound.filePath);
+        final path = cached ?? sound.filePath;
+        await _player.play(DeviceFileSource(path));
+      }
     } catch (_) {
       if (mounted) setState(() => _playingId = null);
     }

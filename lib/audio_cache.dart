@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:audioplayers/audioplayers.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 
@@ -15,6 +16,12 @@ class AudioCacheManager {
   bool get isInitialized => _initialized;
 
   Future<void> preloadAll(List<String> assetPaths) async {
+    // ב-Web לא צריך preload — audioplayers מנגן assets ישירות
+    if (kIsWeb) {
+      _initialized = true;
+      return;
+    }
+
     final tempDir = await getTemporaryDirectory();
     final cacheDir = Directory('${tempDir.path}/meme_sounds');
     if (!await cacheDir.exists()) {
