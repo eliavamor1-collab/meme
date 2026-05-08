@@ -1,5 +1,7 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:audioplayers/audioplayers.dart';
@@ -57,17 +59,58 @@ class _HomeScreenState extends State<HomeScreen> {
     if (mounted) setState(() => _playingId = sound.id);
     try {
       if (sound.isBuiltIn) {
-        // ב-Web משתמשים ב-AssetSource ישירות
-        await _player.play(
-          AssetSource(sound.filePath.replaceFirst('assets/', '')),
-        );
+        if (kIsWeb) {
+          // ב-Web: טוען את הקובץ כ-bytes עם MIME type נכון לפי סיומת
+          final bytes = await rootBundle.load(sound.filePath);
+          final ext = sound.filePath.split('.').last.toLowerCase();
+          final mimeType = _getMimeType(ext);
+          await _player.play(
+            BytesSource(bytes.buffer.asUint8List(), mimeType: mimeType),
+          );
+        } else {
+          // במובייל: משתמש ב-AssetSource
+          await _player.play(
+            AssetSource(sound.filePath.replaceFirst('assets/', '')),
+          );
+        }
       } else {
-        final cached = AudioCacheManager().getLocalPath(sound.filePath);
-        final path = cached ?? sound.filePath;
-        await _player.play(DeviceFileSource(path));
+        if (kIsWeb) {
+          // ב-Web: משתמש ב-DeviceFileSource לא עובד, נשתמש ב-bytes
+          final bytes = await rootBundle.load(sound.filePath);
+          final ext = sound.filePath.split('.').last.toLowerCase();
+          await _player.play(
+            BytesSource(
+              bytes.buffer.asUint8List(),
+              mimeType: _getMimeType(ext),
+            ),
+          );
+        } else {
+          final cached = AudioCacheManager().getLocalPath(sound.filePath);
+          final path = cached ?? sound.filePath;
+          await _player.play(DeviceFileSource(path));
+        }
       }
-    } catch (_) {
+    } catch (e) {
       if (mounted) setState(() => _playingId = null);
+    }
+  }
+
+  String _getMimeType(String ext) {
+    switch (ext) {
+      case 'opus':
+        return 'audio/ogg; codecs=opus';
+      case 'ogg':
+        return 'audio/ogg';
+      case 'mp3':
+        return 'audio/mpeg';
+      case 'wav':
+        return 'audio/wav';
+      case 'm4a':
+        return 'audio/mp4';
+      case 'aac':
+        return 'audio/aac';
+      default:
+        return 'audio/ogg; codecs=opus';
     }
   }
 
