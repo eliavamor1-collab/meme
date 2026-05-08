@@ -14,6 +14,7 @@ import 'sounds_provider.dart';
 import 'settings_provider.dart';
 import 'settings_drawer.dart';
 import 'audio_cache.dart';
+import 'web_audio_player.dart';
 
 // הקטגוריות הקבועות לתצוגה מחולקת
 const List<String> kDisplayCategories = ['שיר', 'פלוץ', 'קול', 'עברית'];
@@ -26,7 +27,9 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  final AudioPlayer _player = AudioPlayer();
+  // מובייל: just_audio | Web: WebAudioPlayer
+  final AudioPlayer? _mobilePlayer = kIsWeb ? null : AudioPlayer();
+  final WebAudioPlayer _webPlayer = WebAudioPlayer();
   String? _playingId;
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
@@ -39,7 +42,7 @@ class _HomeScreenState extends State<HomeScreen> {
         () => _searchQuery = _searchController.text.trim().toLowerCase(),
       );
     });
-    _player.playerStateStream.listen((state) {
+    _mobilePlayer?.playerStateStream.listen((state) {
       if (state.processingState == ProcessingState.completed) {
         if (mounted) setState(() => _playingId = null);
       }
@@ -48,35 +51,45 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
-    _player.dispose();
+    _mobilePlayer?.dispose();
     _searchController.dispose();
     super.dispose();
   }
 
   Future<void> _playSound(SoundModel sound) async {
     if (_playingId == sound.id) {
-      await _player.stop();
+      // עצור
+      if (kIsWeb) {
+        _webPlayer.stop();
+      } else {
+        await _mobilePlayer?.stop();
+      }
       if (mounted) setState(() => _playingId = null);
       return;
     }
     if (mounted) setState(() => _playingId = sound.id);
     try {
-      if (sound.isBuiltIn) {
-        await _player.setAudioSource(AudioSource.asset(sound.filePath));
+      if (kIsWeb) {
+        _webPlayer.play(
+          sound.filePath,
+          onEnded: () {
+            if (mounted) setState(() => _playingId = null);
+          },
+        );
       } else {
-        if (kIsWeb) {
-          final bytes = await rootBundle.load(sound.filePath);
-          await _player.setAudioSource(
-            _BytesAudioSource(bytes.buffer.asUint8List()),
+        if (sound.isBuiltIn) {
+          await _mobilePlayer?.setAudioSource(
+            AudioSource.asset(sound.filePath),
           );
         } else {
           final cached = AudioCacheManager().getLocalPath(sound.filePath);
           final path = cached ?? sound.filePath;
-          await _player.setAudioSource(AudioSource.file(path));
+          await _mobilePlayer?.setAudioSource(AudioSource.file(path));
         }
+        await _mobilePlayer?.play();
       }
-      await _player.play();
     } catch (e) {
+      debugPrint('❌ ERROR: $e');
       if (mounted) setState(() => _playingId = null);
     }
   }
@@ -313,7 +326,11 @@ class _HomeScreenState extends State<HomeScreen> {
             onPressed: () {
               context.read<SoundsProvider>().removeSound(sound.id);
               if (_playingId == sound.id) {
-                _player.stop();
+                if (kIsWeb) {
+                  _webPlayer.stop();
+                } else {
+                  _mobilePlayer?.stop();
+                }
                 setState(() => _playingId = null);
               }
               Navigator.pop(ctx);
@@ -478,7 +495,7 @@ class _HomeScreenState extends State<HomeScreen> {
         return _SoundButton(
           sound: sound,
           isPlaying: isPlaying,
-          player: isPlaying ? _player : null,
+          player: isPlaying ? _mobilePlayer : null,
           onTap: () => _playSound(sound),
           onLongPress: () => _showOptionsMenu(sound),
         );
@@ -654,7 +671,7 @@ class _HomeScreenState extends State<HomeScreen> {
 class _SoundButton extends StatefulWidget {
   final SoundModel sound;
   final bool isPlaying;
-  final AudioPlayer? player; // null כשלא מתנגן - just_audio AudioPlayer
+  final AudioPlayer? player; // null כשלא מתנגן או ב-Web
   final VoidCallback onTap;
   final VoidCallback onLongPress;
 

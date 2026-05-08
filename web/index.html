@@ -35,14 +35,58 @@
   <link rel="manifest" href="manifest.json">
 </head>
 <body>
-  <!--
-    You can customize the "flutter_bootstrap.js" script.
-    This is useful to provide a custom configuration to the Flutter loader
-    or to give the user feedback during the initialization process.
+  <script>
+    // Audio player using Web Audio API - supports OPUS natively
+    var _audioCtx = null;
+    var _currentSource = null;
+    var _onEndedCallback = null;
 
-    For more details:
-    * https://docs.flutter.dev/platform-integration/web/initialization
-  -->
+    function getAudioContext() {
+      if (!_audioCtx) {
+        _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      // Resume if suspended (browser autoplay policy)
+      if (_audioCtx.state === 'suspended') {
+        _audioCtx.resume();
+      }
+      return _audioCtx;
+    }
+
+    window.playOpusAsset = function(url, onEnded) {
+      // Stop current sound
+      if (_currentSource) {
+        try { _currentSource.stop(); } catch(e) {}
+        _currentSource = null;
+      }
+
+      var ctx = getAudioContext();
+      fetch(url)
+        .then(function(r) { return r.arrayBuffer(); })
+        .then(function(buf) { return ctx.decodeAudioData(buf); })
+        .then(function(decoded) {
+          var source = ctx.createBufferSource();
+          source.buffer = decoded;
+          source.connect(ctx.destination);
+          source.onended = function() {
+            _currentSource = null;
+            if (onEnded) onEnded();
+          };
+          source.start(0);
+          _currentSource = source;
+        })
+        .catch(function(e) {
+          console.error('Audio error:', e);
+          if (onEnded) onEnded();
+        });
+    };
+
+    window.stopAudio = function() {
+      if (_currentSource) {
+        try { _currentSource.stop(); } catch(e) {}
+        _currentSource = null;
+      }
+    };
+  </script>
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>
