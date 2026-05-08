@@ -1,7 +1,7 @@
 import 'dart:io';
-import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/services.dart';
+import 'package:just_audio/just_audio.dart';
 import 'package:path_provider/path_provider.dart';
 
 class AudioCacheManager {
@@ -16,7 +16,7 @@ class AudioCacheManager {
   bool get isInitialized => _initialized;
 
   Future<void> preloadAll(List<String> assetPaths) async {
-    // ב-Web לא צריך preload — audioplayers מנגן assets ישירות
+    // ב-Web לא צריך preload — just_audio מנגן assets ישירות
     if (kIsWeb) {
       _initialized = true;
       return;
@@ -44,8 +44,8 @@ class AudioCacheManager {
           // קבל את אורך הסאונד
           if (!_durations.containsKey(assetPath)) {
             final probe = AudioPlayer();
-            await probe.setSourceDeviceFile(destPath);
-            final dur = await probe.getDuration();
+            await probe.setFilePath(destPath);
+            final dur = probe.duration;
             if (dur != null) _durations[assetPath] = dur;
             await probe.dispose();
           }

@@ -1,10 +1,11 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:audioplayers/audioplayers.dart';
+import 'package:just_audio/just_audio.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -38,8 +39,10 @@ class _HomeScreenState extends State<HomeScreen> {
         () => _searchQuery = _searchController.text.trim().toLowerCase(),
       );
     });
-    _player.onPlayerComplete.listen((_) {
-      if (mounted) setState(() => _playingId = null);
+    _player.playerStateStream.listen((state) {
+      if (state.processingState == ProcessingState.completed) {
+        if (mounted) setState(() => _playingId = null);
+      }
     });
   }
 
@@ -59,58 +62,22 @@ class _HomeScreenState extends State<HomeScreen> {
     if (mounted) setState(() => _playingId = sound.id);
     try {
       if (sound.isBuiltIn) {
-        if (kIsWeb) {
-          // ב-Web: טוען את הקובץ כ-bytes עם MIME type נכון לפי סיומת
-          final bytes = await rootBundle.load(sound.filePath);
-          final ext = sound.filePath.split('.').last.toLowerCase();
-          final mimeType = _getMimeType(ext);
-          await _player.play(
-            BytesSource(bytes.buffer.asUint8List(), mimeType: mimeType),
-          );
-        } else {
-          // במובייל: משתמש ב-AssetSource
-          await _player.play(
-            AssetSource(sound.filePath.replaceFirst('assets/', '')),
-          );
-        }
+        await _player.setAudioSource(AudioSource.asset(sound.filePath));
       } else {
         if (kIsWeb) {
-          // ב-Web: משתמש ב-DeviceFileSource לא עובד, נשתמש ב-bytes
           final bytes = await rootBundle.load(sound.filePath);
-          final ext = sound.filePath.split('.').last.toLowerCase();
-          await _player.play(
-            BytesSource(
-              bytes.buffer.asUint8List(),
-              mimeType: _getMimeType(ext),
-            ),
+          await _player.setAudioSource(
+            _BytesAudioSource(bytes.buffer.asUint8List()),
           );
         } else {
           final cached = AudioCacheManager().getLocalPath(sound.filePath);
           final path = cached ?? sound.filePath;
-          await _player.play(DeviceFileSource(path));
+          await _player.setAudioSource(AudioSource.file(path));
         }
       }
+      await _player.play();
     } catch (e) {
       if (mounted) setState(() => _playingId = null);
-    }
-  }
-
-  String _getMimeType(String ext) {
-    switch (ext) {
-      case 'opus':
-        return 'audio/ogg; codecs=opus';
-      case 'ogg':
-        return 'audio/ogg';
-      case 'mp3':
-        return 'audio/mpeg';
-      case 'wav':
-        return 'audio/wav';
-      case 'm4a':
-        return 'audio/mp4';
-      case 'aac':
-        return 'audio/aac';
-      default:
-        return 'audio/ogg; codecs=opus';
     }
   }
 
@@ -687,7 +654,7 @@ class _HomeScreenState extends State<HomeScreen> {
 class _SoundButton extends StatefulWidget {
   final SoundModel sound;
   final bool isPlaying;
-  final AudioPlayer? player; // null כשלא מתנגן
+  final AudioPlayer? player; // null כשלא מתנגן - just_audio AudioPlayer
   final VoidCallback onTap;
   final VoidCallback onLongPress;
 
@@ -705,18 +672,28 @@ class _SoundButton extends StatefulWidget {
 
 class _SoundButtonState extends State<_SoundButton> {
   Duration _position = Duration.zero;
+  StreamSubscription? _positionSub;
 
   @override
   void didUpdateWidget(_SoundButton old) {
     super.didUpdateWidget(old);
     if (!widget.isPlaying) {
       _position = Duration.zero;
+      _positionSub?.cancel();
+      _positionSub = null;
     }
     if (widget.player != old.player && widget.player != null) {
-      widget.player!.onPositionChanged.listen((pos) {
+      _positionSub?.cancel();
+      _positionSub = widget.player!.positionStream.listen((pos) {
         if (mounted) setState(() => _position = pos);
       });
     }
+  }
+
+  @override
+  void dispose() {
+    _positionSub?.cancel();
+    super.dispose();
   }
 
   String _fmt(Duration d) {
@@ -858,6 +835,25 @@ class _SoundButtonState extends State<_SoundButton> {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// AudioSource שמנגן מ-bytes (לשימוש ב-Web עם קבצי משתמש)
+class _BytesAudioSource extends StreamAudioSource {
+  final Uint8List _bytes;
+  _BytesAudioSource(this._bytes) : super(tag: 'BytesAudioSource');
+
+  @override
+  Future<StreamAudioResponse> request([int? start, int? end]) async {
+    start ??= 0;
+    end ??= _bytes.length;
+    return StreamAudioResponse(
+      sourceLength: _bytes.length,
+      contentLength: end - start,
+      offset: start,
+      stream: Stream.value(_bytes.sublist(start, end)),
+      contentType: 'audio/ogg',
     );
   }
 }
