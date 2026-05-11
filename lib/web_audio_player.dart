@@ -13,24 +13,19 @@ class WebAudioPlayer {
   factory WebAudioPlayer() => _instance;
   WebAudioPlayer._internal();
 
-  void Function()? _onEnded;
-
   void play(String assetPath, {void Function()? onEnded}) {
     if (!kIsWeb) return;
-    _onEnded = onEnded;
 
     // בנה URL נכון ל-Flutter Web asset
     final encodedPath = assetPath.split('/').map(Uri.encodeComponent).join('/');
     final url = 'assets/$encodedPath';
 
     final callback = onEnded != null ? (() => onEnded()).toJS : null;
-
     _jsPlayOpusAsset(url, callback);
   }
 
   void stop() {
     if (!kIsWeb) return;
     _jsStopAudio();
-    _onEnded = null;
   }
 }

@@ -855,22 +855,3 @@ class _SoundButtonState extends State<_SoundButton> {
     );
   }
 }
-
-/// AudioSource שמנגן מ-bytes (לשימוש ב-Web עם קבצי משתמש)
-class _BytesAudioSource extends StreamAudioSource {
-  final Uint8List _bytes;
-  _BytesAudioSource(this._bytes) : super(tag: 'BytesAudioSource');
-
-  @override
-  Future<StreamAudioResponse> request([int? start, int? end]) async {
-    start ??= 0;
-    end ??= _bytes.length;
-    return StreamAudioResponse(
-      sourceLength: _bytes.length,
-      contentLength: end - start,
-      offset: start,
-      stream: Stream.value(_bytes.sublist(start, end)),
-      contentType: 'audio/ogg',
-    );
-  }
-}
